@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<EntityRelationships xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <EntityRelationship Name="business_unit_demo_student" />
+  <EntityRelationship Name="business_unit_demo_teacher" />
+  <EntityRelationship Name="demo_teacher_Favourite_demo_student" />
+  <EntityRelationship Name="lk_demo_student_createdby" />
+  <EntityRelationship Name="lk_demo_student_modifiedby" />
+  <EntityRelationship Name="lk_demo_teacher_createdby" />
+  <EntityRelationship Name="lk_demo_teacher_modifiedby" />
+  <EntityRelationship Name="owner_demo_student" />
+  <EntityRelationship Name="owner_demo_teacher" />
+  <EntityRelationship Name="team_demo_student" />
+  <EntityRelationship Name="team_demo_teacher" />
+  <EntityRelationship Name="user_demo_student" />
+  <EntityRelationship Name="user_demo_teacher" />
+</EntityRelationships>
