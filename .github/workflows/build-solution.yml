@@ -11,6 +11,8 @@ on:
     paths: ['solutions/**']
   pull_request:
     branches: [main]            # every PR, so the required "build" check always runs
+    # "labeled"/"unlabeled": adding allow-deletions starts a fresh run that sees the label
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   workflow_dispatch:
 
 env:
