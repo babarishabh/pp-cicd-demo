@@ -1,3 +1,15 @@
+# Module 9 - Export workflow (version is set here, at export)
+# Click "Run workflow" -> picks the next version -> sets it on the solution in Dev ->
+# exports Demo from Dev -> unpacks it -> opens a pull request.
+#
+# Version:
+#   "version" left empty -> last version in Git (Other/Solution.xml) + 1 on the last number
+#   "version" filled in  -> exactly that version (e.g. 1.1.0.0 for a bigger release)
+# The same version then goes to Git, the build, Test and Prod - so all match Dev.
+#
+# Before first run: Settings -> Actions -> General -> Workflow permissions ->
+#   "Read and write permissions" + "Allow GitHub Actions to create and approve pull requests"
+
 name: 1 - Export solution from Dev
 
 on:
@@ -10,6 +22,10 @@ on:
       commit_message:
         description: What changed?
         required: true
+      version:
+        description: "Version (optional, e.g. 1.1.0.0). Empty = last version + 1"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -21,12 +37,46 @@ jobs:
     env:
       SOLUTION: ${{ github.event.inputs.solution_name }}
       SRC: solutions/${{ github.event.inputs.solution_name }}/src
+      REQUESTED_VERSION: ${{ github.event.inputs.version }}
     steps:
       - name: Check out repo
         uses: actions/checkout@v5
 
+      - name: Work out the new version
+        id: ver
+        run: |
+          if [ -n "$REQUESTED_VERSION" ]; then
+            NEW="$REQUESTED_VERSION"
+            echo "Using the version you typed: $NEW"
+          else
+            FILE="$SRC/Other/Solution.xml"
+            if [ ! -f "$FILE" ]; then
+              echo "::error::$FILE not found - type a version in the 'version' box for the first export."
+              exit 1
+            fi
+            OLD=$(grep -m1 -oP '(?<=<Version>)[^<]+' "$FILE")
+            IFS='.' read -r A B C D <<< "$OLD"
+            NEW="$A.$B.$C.$(( ${D:-0} + 1 ))"
+            echo "Last version in Git: $OLD -> new version: $NEW"
+          fi
+          if ! [[ "$NEW" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version '$NEW' must look like 1.2.3.4"
+            exit 1
+          fi
+          echo "version=$NEW" >> "$GITHUB_OUTPUT"
+
       - name: Install Power Platform Tools
         uses: microsoft/powerplatform-actions/actions-install@v1
+
+      - name: Set the version on the solution in Dev
+        uses: microsoft/powerplatform-actions/set-online-solution-version@v1
+        with:
+          environment-url: ${{ vars.DEV_ENV_URL }}
+          app-id: ${{ vars.PP_APP_ID }}
+          client-secret: ${{ secrets.PP_CLIENT_SECRET }}
+          tenant-id: ${{ vars.PP_TENANT_ID }}
+          name: ${{ env.SOLUTION }}
+          version: ${{ steps.ver.outputs.version }}
 
       - name: Publish customizations in Dev
         uses: microsoft/powerplatform-actions/publish-solution@v1
@@ -66,12 +116,17 @@ jobs:
           solution-type: Both
           overwrite-files: true
 
+      - name: Check the exported version
+        run: |
+          echo "Version in exported source:"
+          grep -m1 "<Version>" "$SRC/Other/Solution.xml"
+
       - name: Create pull request
         uses: peter-evans/create-pull-request@v7
         with:
           branch: export/${{ env.SOLUTION }}-${{ github.run_number }}
           base: main
           add-paths: solutions/
-          commit-message: ${{ github.event.inputs.commit_message }}
-          title: "Export ${{ env.SOLUTION }}: ${{ github.event.inputs.commit_message }}"
-          body: Exported from Dev by workflow run ${{ github.run_number }}.
+          commit-message: "${{ steps.ver.outputs.version }}: ${{ github.event.inputs.commit_message }}"
+          title: "Export ${{ env.SOLUTION }} ${{ steps.ver.outputs.version }}: ${{ github.event.inputs.commit_message }}"
+          body: Exported from Dev by workflow run ${{ github.run_number }}. Version ${{ steps.ver.outputs.version }}.

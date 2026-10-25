@@ -1,7 +1,8 @@
 # Module 10 - Build workflow (+ Module 15 removal guard)
-# Runs on every PR to main (as a check) and every merge to main.
-# Packs a versioned managed zip, runs Solution Checker, saves the zip as an artifact.
-# Before first PR run: create the label "allow-deletions" (Issues -> Labels -> New label).
+# Runs on every PR to main (as the required check) and on merges to main that change solutions/.
+# Packs the managed zip (version comes from the source, set at export), runs Solution Checker,
+# saves the zip as an artifact.
+# Labels: "allow-deletions" lets a PR that removes components pass the guard.
 
 name: 2 - Build solution
 
@@ -44,21 +45,19 @@ jobs:
               echo "$REMOVED_FILES"
               echo "$REMOVED_COLUMNS"
               echo '```'
-              echo "If intentional, add the label **allow-deletions** and re-run."
+              echo "If intentional, add the label **allow-deletions** (the check re-runs by itself)."
             } >> "$GITHUB_STEP_SUMMARY"
             echo "::error::This PR removes solution components. See the summary."
             exit 1
           fi
 
+      - name: Show solution version
+        run: |
+          echo "Building version:"
+          grep -m1 "<Version>" "${{ env.SRC }}/Other/Solution.xml"
+
       - name: Install Power Platform Tools
         uses: microsoft/powerplatform-actions/actions-install@v1
-
-      - name: Stamp version (1.0.0.<run number>)
-        run: |
-          FILE=${{ env.SRC }}/Other/Solution.xml
-          sed -i -E "s#<Version>[^<]+</Version>#<Version>1.0.0.${{ github.run_number }}</Version>#" "$FILE"
-          echo "Version is now:"
-          grep -m1 "<Version>" "$FILE"
 
       - name: Pack managed
         uses: microsoft/powerplatform-actions/pack-solution@v1
