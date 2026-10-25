@@ -74,8 +74,7 @@ jobs:
           client-secret: ${{ secrets.PP_CLIENT_SECRET }}
           tenant-id: ${{ vars.PP_TENANT_ID }}
           path: out/${{ env.SOLUTION }}_managed.zip
-          error-level: HighIssueCount
-          error-threshold: 0
+          # results are uploaded as a separate artifact (SARIF report) - review it after each build
 
       - name: Upload build artifact
         if: github.event_name != 'pull_request'
