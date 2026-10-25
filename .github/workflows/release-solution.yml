@@ -1,6 +1,6 @@
 # Module 12 - Release workflow (Upgrade by default, with an opt-out checkbox)
 # Starts automatically when "2 - Build solution" succeeds on main.
-# Test -> change preview -> (approval) -> Prod. Same zip everywhere.
+# Test -> change preview -> (approval) -> Prod -> Dev version synced. Same zip everywhere.
 #
 # Import mode per environment:
 #   Automatic release              -> Upgrade
@@ -9,6 +9,9 @@
 #   First deployment (no tag yet)  -> Update  (Upgrade needs an existing solution)
 # Accidental deletions are stopped earlier, at the PR, by the removal guard in the build
 # (only PRs labelled "allow-deletions" can remove components).
+#
+# After a successful Prod import, the Demo solution in Dev is set to the same version,
+# so Dev, Test and Prod all show the released version.
 #
 # Before first run:
 #   Settings -> Environments -> "Test" and "Prod", each with variable ENV_URL
@@ -177,6 +180,13 @@ jobs:
           run-id: ${{ env.BUILD_RUN_ID }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Read released version from the zip
+        id: ver
+        run: |
+          VERSION=$(python3 -c "import zipfile,re; x=zipfile.ZipFile('out/${{ env.SOLUTION }}_managed.zip').read('solution.xml').decode('utf-8','ignore'); print(re.search(r'<Version>([^<]+)</Version>', x).group(1))")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Released version: $VERSION"
+
       - name: Install Power Platform Tools
         uses: microsoft/powerplatform-actions/actions-install@v1
 
@@ -200,3 +210,13 @@ jobs:
         run: |
           git tag -f prod-deployed $RELEASE_SHA
           git push -f origin prod-deployed
+
+      - name: Set the same version on the solution in Dev
+        uses: microsoft/powerplatform-actions/set-online-solution-version@v1
+        with:
+          environment-url: ${{ vars.DEV_ENV_URL }}
+          app-id: ${{ vars.PP_APP_ID }}
+          client-secret: ${{ secrets.PP_CLIENT_SECRET }}
+          tenant-id: ${{ vars.PP_TENANT_ID }}
+          name: ${{ env.SOLUTION }}
+          version: ${{ steps.ver.outputs.version }}
