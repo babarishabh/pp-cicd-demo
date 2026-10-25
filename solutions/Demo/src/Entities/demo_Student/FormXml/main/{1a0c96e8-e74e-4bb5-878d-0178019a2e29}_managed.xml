@@ -36,19 +36,19 @@
                       </cell>
                     </row>
                     <row>
-                      <cell id="{2c4a54e6-ab4a-4443-b4ea-f216954399d2}" locklevel="0" colspan="1" rowspan="1">
-                        <labels>
-                          <label description="" languagecode="1033" />
-                        </labels>
-                        <control id="demo_age" classid="{C6D124CA-7EDA-4A60-AEA9-7FB8D318B68F}" datafieldname="demo_age" disabled="false" />
-                      </cell>
-                    </row>
-                    <row>
                       <cell id="{4ccadf12-5d5a-4e90-96c5-08dd760aae92}" locklevel="0" colspan="1" rowspan="1">
                         <labels>
                           <label description="" languagecode="1033" />
                         </labels>
                         <control id="demo_gender" classid="{3EF39988-22BB-4F0B-BBBE-64B5A3748AEE}" datafieldname="demo_gender" disabled="false" />
+                      </cell>
+                    </row>
+                    <row>
+                      <cell id="{b6e4ce0a-8193-4dbd-b77f-b73a568110ca}" locklevel="0" colspan="1" rowspan="1">
+                        <labels>
+                          <label description="" languagecode="1033" />
+                        </labels>
+                        <control id="demo_phonenumber" classid="{C6D124CA-7EDA-4A60-AEA9-7FB8D318B68F}" datafieldname="demo_phonenumber" disabled="false" />
                       </cell>
                     </row>
                     <row>
