@@ -10,8 +10,7 @@ on:
     branches: [main]
     paths: ['solutions/**']
   pull_request:
-    branches: [main]
-    paths: ['solutions/**']
+    branches: [main]            # every PR, so the required "build" check always runs
   workflow_dispatch:
 
 env:
