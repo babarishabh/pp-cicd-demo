@@ -1,0 +1,152 @@
+# Module 12 - Release workflow (+ Module 15 Prod preview)
+# Starts automatically when "2 - Build solution" succeeds on main.
+# Test -> change preview -> (approval) -> Prod. Same zip everywhere.
+# Before first run:
+#   Settings -> Environments -> create "Test" and "Prod"
+#     each with variable ENV_URL (Test = org4fe72f8d..., Prod = org5f17559d...)
+#   Prod: Required reviewers (Module 13)
+#   Fill deployment-settings/test.json and prod.json (Module 11)
+
+name: 3 - Release solution
+
+on:
+  workflow_run:
+    workflows: ["2 - Build solution"]   # must match the build workflow's name exactly
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: Run ID of the build to deploy (redeploy / rollback)
+        required: true
+      upgrade:
+        description: Apply upgrade (DELETES removed components and their data)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOLUTION: Demo
+  BUILD_RUN_ID: ${{ github.event.workflow_run.id || github.event.inputs.build_run_id }}
+  RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+concurrency:
+  group: release-solution
+  cancel-in-progress: false
+
+jobs:
+  deploy-test:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: Test
+    steps:
+      - name: Check out repo (for deployment settings)
+        uses: actions/checkout@v5
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: solution-managed
+          path: out
+          run-id: ${{ env.BUILD_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Power Platform Tools
+        uses: microsoft/powerplatform-actions/actions-install@v1
+
+      - name: Import into Test
+        uses: microsoft/powerplatform-actions/import-solution@v1
+        with:
+          environment-url: ${{ vars.ENV_URL }}
+          app-id: ${{ vars.PP_APP_ID }}
+          client-secret: ${{ secrets.PP_CLIENT_SECRET }}
+          tenant-id: ${{ vars.PP_TENANT_ID }}
+          solution-file: out/${{ env.SOLUTION }}_managed.zip
+          use-deployment-settings-file: true
+          deployment-settings-file: deployment-settings/test.json
+          force-overwrite: true
+          publish-changes: true
+          run-asynchronously: true
+          max-async-wait-time: 60
+
+  prod-preview:
+    needs: deploy-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo (full history)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Compare release with what is in Prod
+        run: |
+          git fetch --tags --force
+          {
+            echo "## Changes going to Prod"
+            if git rev-parse -q --verify refs/tags/prod-deployed >/dev/null; then
+              echo "Comparing \`prod-deployed\` with \`${RELEASE_SHA::7}\`"
+              echo "### Files changed"
+              echo '```'
+              git diff --stat prod-deployed $RELEASE_SHA -- solutions/
+              echo '```'
+              echo "### Removed files"
+              echo '```'
+              git diff --name-only --diff-filter=D prod-deployed $RELEASE_SHA -- solutions/
+              echo '```'
+              echo "### Removed columns"
+              echo '```'
+              git diff prod-deployed $RELEASE_SHA -- 'solutions/**/Entity.xml' \
+                | grep -E '^-\s*<attribute PhysicalName=' || echo "(none)"
+              echo '```'
+            else
+              echo "First Prod deployment: no previous release to compare."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-prod:
+    needs: prod-preview
+    runs-on: ubuntu-latest
+    environment: Prod                    # waits here for a reviewer's approval
+    permissions:
+      contents: write                    # to move the prod-deployed tag
+      actions: read
+    steps:
+      - name: Check out repo (full history)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: solution-managed
+          path: out
+          run-id: ${{ env.BUILD_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Power Platform Tools
+        uses: microsoft/powerplatform-actions/actions-install@v1
+
+      - name: Import into Prod
+        uses: microsoft/powerplatform-actions/import-solution@v1
+        with:
+          environment-url: ${{ vars.ENV_URL }}
+          app-id: ${{ vars.PP_APP_ID }}
+          client-secret: ${{ secrets.PP_CLIENT_SECRET }}
+          tenant-id: ${{ vars.PP_TENANT_ID }}
+          solution-file: out/${{ env.SOLUTION }}_managed.zip
+          use-deployment-settings-file: true
+          deployment-settings-file: deployment-settings/prod.json
+          force-overwrite: true
+          publish-changes: true
+          stage-and-upgrade: ${{ github.event.inputs.upgrade == 'true' }}
+          run-asynchronously: true
+          max-async-wait-time: 60
+
+      - name: Mark this commit as deployed to Prod
+        run: |
+          git tag -f prod-deployed $RELEASE_SHA
+          git push -f origin prod-deployed
