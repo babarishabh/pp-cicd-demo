@@ -1,0 +1,86 @@
+# Module 10 - Build workflow (+ Module 15 removal guard)
+# Runs on every PR to main (as a check) and every merge to main.
+# Packs a versioned managed zip, runs Solution Checker, saves the zip as an artifact.
+# Before first PR run: create the label "allow-deletions" (Issues -> Labels -> New label).
+
+name: 2 - Build solution
+
+on:
+  push:
+    branches: [main]
+    paths: ['solutions/**']
+  pull_request:
+    branches: [main]
+    paths: ['solutions/**']
+  workflow_dispatch:
+
+env:
+  SOLUTION: Demo
+  SRC: solutions/Demo/src
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo (full history)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Block accidental component removal
+        if: >
+          github.event_name == 'pull_request' &&
+          !contains(github.event.pull_request.labels.*.name, 'allow-deletions')
+        run: |
+          BASE=origin/${{ github.base_ref }}
+          REMOVED_FILES=$(git diff --name-only --diff-filter=D $BASE...HEAD -- solutions/)
+          REMOVED_COLUMNS=$(git diff $BASE...HEAD -- 'solutions/**/Entity.xml' \
+                            | grep -E '^-\s*<attribute PhysicalName=' || true)
+          if [ -n "$REMOVED_FILES" ] || [ -n "$REMOVED_COLUMNS" ]; then
+            {
+              echo "## Components removed in this PR"
+              echo '```'
+              echo "$REMOVED_FILES"
+              echo "$REMOVED_COLUMNS"
+              echo '```'
+              echo "If intentional, add the label **allow-deletions** and re-run."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::This PR removes solution components. See the summary."
+            exit 1
+          fi
+
+      - name: Install Power Platform Tools
+        uses: microsoft/powerplatform-actions/actions-install@v1
+
+      - name: Stamp version (1.0.0.<run number>)
+        run: >
+          pac solution version
+          --solutionPath ${{ env.SRC }}
+          --strategy None
+          --revisionversion ${{ github.run_number }}
+
+      - name: Pack managed
+        uses: microsoft/powerplatform-actions/pack-solution@v1
+        with:
+          solution-folder: ${{ env.SRC }}
+          solution-file: out/${{ env.SOLUTION }}_managed.zip
+          solution-type: Managed
+
+      - name: Run Solution Checker
+        uses: microsoft/powerplatform-actions/check-solution@v1
+        with:
+          environment-url: ${{ vars.DEV_ENV_URL }}
+          app-id: ${{ vars.PP_APP_ID }}
+          client-secret: ${{ secrets.PP_CLIENT_SECRET }}
+          tenant-id: ${{ vars.PP_TENANT_ID }}
+          path: out/${{ env.SOLUTION }}_managed.zip
+          error-level: HighIssueCount
+          error-threshold: 0
+
+      - name: Upload build artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: solution-managed
+          path: out/${{ env.SOLUTION }}_managed.zip
+          retention-days: 30
