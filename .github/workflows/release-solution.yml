@@ -1,11 +1,20 @@
-# Module 12 - Release workflow (+ Module 15 Prod preview)
+# Module 12 - Release workflow (Upgrade by default, with an opt-out checkbox)
 # Starts automatically when "2 - Build solution" succeeds on main.
 # Test -> change preview -> (approval) -> Prod. Same zip everywhere.
+#
+# Import mode per environment:
+#   Automatic release              -> Upgrade
+#   Manual run, "upgrade" ticked   -> Upgrade (default)
+#   Manual run, "upgrade" unticked -> Update  (nothing is deleted)
+#   First deployment (no tag yet)  -> Update  (Upgrade needs an existing solution)
+# Accidental deletions are stopped earlier, at the PR, by the removal guard in the build
+# (only PRs labelled "allow-deletions" can remove components).
+#
 # Before first run:
-#   Settings -> Environments -> create "Test" and "Prod"
-#     each with variable ENV_URL (Test = org4fe72f8d..., Prod = org5f17559d...)
-#   Prod: Required reviewers (Module 13)
-#   Fill deployment-settings/test.json and prod.json (Module 11)
+#   Settings -> Environments -> "Test" and "Prod", each with variable ENV_URL
+#   Prod: Required reviewers (saved)
+#   deployment-settings/test.json and prod.json filled in
+#   Connections in Test and Prod shared with the app user (Can use)
 
 name: 3 - Release solution
 
@@ -20,9 +29,9 @@ on:
         description: Run ID of the build to deploy (redeploy / rollback)
         required: true
       upgrade:
-        description: Apply upgrade (DELETES removed components and their data)
+        description: Upgrade (deletes removed components). Untick for Update - nothing deleted.
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: read
@@ -32,6 +41,8 @@ env:
   SOLUTION: Demo
   BUILD_RUN_ID: ${{ github.event.workflow_run.id || github.event.inputs.build_run_id }}
   RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+  # automatic releases have no form -> Upgrade; manual runs follow the checkbox
+  UPGRADE_REQUESTED: ${{ github.event_name == 'workflow_run' || inputs.upgrade == true }}
 
 concurrency:
   group: release-solution
@@ -42,9 +53,25 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     environment: Test
+    permissions:
+      contents: write                    # to move the test-deployed tag
+      actions: read
     steps:
-      - name: Check out repo (for deployment settings)
+      - name: Check out repo (full history)
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Decide import mode for Test
+        id: mode
+        run: |
+          if [ "$UPGRADE_REQUESTED" != "true" ]; then
+            echo "upgrade=false" >> "$GITHUB_OUTPUT"; echo "Test: Update (checkbox unticked)"
+          elif git ls-remote --exit-code --tags origin refs/tags/test-deployed >/dev/null; then
+            echo "upgrade=true" >> "$GITHUB_OUTPUT"; echo "Test: Upgrade"
+          else
+            echo "upgrade=false" >> "$GITHUB_OUTPUT"; echo "Test: Update (first deployment)"
+          fi
 
       - name: Download build artifact
         uses: actions/download-artifact@v4
@@ -71,6 +98,12 @@ jobs:
           publish-changes: true
           run-asynchronously: true
           max-async-wait-time: 60
+          stage-and-upgrade: ${{ steps.mode.outputs.upgrade }}
+
+      - name: Mark this commit as deployed to Test
+        run: |
+          git tag -f test-deployed $RELEASE_SHA
+          git push -f origin test-deployed
 
   prod-preview:
     needs: deploy-test
@@ -86,7 +119,15 @@ jobs:
           git fetch --tags --force
           {
             echo "## Changes going to Prod"
-            if git rev-parse -q --verify refs/tags/prod-deployed >/dev/null; then
+            if ! git rev-parse -q --verify refs/tags/prod-deployed >/dev/null; then
+              echo "**Mode: Update** - first Prod deployment, no previous release to compare."
+            else
+              if [ "$UPGRADE_REQUESTED" = "true" ]; then
+                echo "**Mode: UPGRADE** - components removed since the last Prod release will be DELETED."
+              else
+                echo "**Mode: Update** - checkbox unticked, nothing will be deleted."
+              fi
+              echo ""
               echo "Comparing \`prod-deployed\` with \`${RELEASE_SHA::7}\`"
               echo "### Files changed"
               echo '```'
@@ -101,8 +142,6 @@ jobs:
               git diff prod-deployed $RELEASE_SHA -- 'solutions/**/Entity.xml' \
                 | grep -E '^-\s*<attribute PhysicalName=' || echo "(none)"
               echo '```'
-            else
-              echo "First Prod deployment: no previous release to compare."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -118,6 +157,17 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+
+      - name: Decide import mode for Prod
+        id: mode
+        run: |
+          if [ "$UPGRADE_REQUESTED" != "true" ]; then
+            echo "upgrade=false" >> "$GITHUB_OUTPUT"; echo "Prod: Update (checkbox unticked)"
+          elif git ls-remote --exit-code --tags origin refs/tags/prod-deployed >/dev/null; then
+            echo "upgrade=true" >> "$GITHUB_OUTPUT"; echo "Prod: Upgrade"
+          else
+            echo "upgrade=false" >> "$GITHUB_OUTPUT"; echo "Prod: Update (first deployment)"
+          fi
 
       - name: Download build artifact
         uses: actions/download-artifact@v4
@@ -142,9 +192,9 @@ jobs:
           deployment-settings-file: deployment-settings/prod.json
           force-overwrite: true
           publish-changes: true
-          stage-and-upgrade: ${{ github.event.inputs.upgrade == 'true' }}
           run-asynchronously: true
           max-async-wait-time: 60
+          stage-and-upgrade: ${{ steps.mode.outputs.upgrade }}
 
       - name: Mark this commit as deployed to Prod
         run: |
