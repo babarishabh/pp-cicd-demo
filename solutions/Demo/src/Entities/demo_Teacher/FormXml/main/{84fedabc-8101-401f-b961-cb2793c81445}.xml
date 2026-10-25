@@ -44,6 +44,14 @@
                       </cell>
                     </row>
                     <row>
+                      <cell id="{a893f0f2-9acf-4afd-86a5-60d61f905141}" locklevel="0" colspan="1" rowspan="1">
+                        <labels>
+                          <label description="Subject" languagecode="1033" />
+                        </labels>
+                        <control id="demo_subject" classid="{4273EDBD-AC1D-40D3-9FB2-095C621B552D}" datafieldname="demo_subject" disabled="false" />
+                      </cell>
+                    </row>
+                    <row>
                       <cell id="{3c281321-6425-4f30-8bd3-f38dd8ee9300}" locklevel="0" colspan="1" rowspan="1">
                         <labels>
                           <label description="Gender" languagecode="1033" />
