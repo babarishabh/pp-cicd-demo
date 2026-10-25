@@ -53,11 +53,11 @@ jobs:
         uses: microsoft/powerplatform-actions/actions-install@v1
 
       - name: Stamp version (1.0.0.<run number>)
-        run: >
-          pac solution version
-          --solutionPath ${{ env.SRC }}
-          --strategy None
-          --revisionversion ${{ github.run_number }}
+        run: |
+          FILE=${{ env.SRC }}/Other/Solution.xml
+          sed -i -E "s#<Version>[^<]+</Version>#<Version>1.0.0.${{ github.run_number }}</Version>#" "$FILE"
+          echo "Version is now:"
+          grep -m1 "<Version>" "$FILE"
 
       - name: Pack managed
         uses: microsoft/powerplatform-actions/pack-solution@v1
