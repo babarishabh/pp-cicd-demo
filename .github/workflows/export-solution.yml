@@ -1,0 +1,77 @@
+name: 1 - Export solution from Dev
+
+on:
+  workflow_dispatch:
+    inputs:
+      solution_name:
+        description: Solution unique name
+        required: true
+        default: Demo
+      commit_message:
+        description: What changed?
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    env:
+      SOLUTION: ${{ github.event.inputs.solution_name }}
+      SRC: solutions/${{ github.event.inputs.solution_name }}/src
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v5
+
+      - name: Install Power Platform Tools
+        uses: microsoft/powerplatform-actions/actions-install@v1
+
+      - name: Publish customizations in Dev
+        uses: microsoft/powerplatform-actions/publish-solution@v1
+        with:
+          environment-url: ${{ vars.DEV_ENV_URL }}
+          app-id: ${{ vars.PP_APP_ID }}
+          client-secret: ${{ secrets.PP_CLIENT_SECRET }}
+          tenant-id: ${{ vars.PP_TENANT_ID }}
+
+      - name: Export unmanaged
+        uses: microsoft/powerplatform-actions/export-solution@v1
+        with:
+          environment-url: ${{ vars.DEV_ENV_URL }}
+          app-id: ${{ vars.PP_APP_ID }}
+          client-secret: ${{ secrets.PP_CLIENT_SECRET }}
+          tenant-id: ${{ vars.PP_TENANT_ID }}
+          solution-name: ${{ env.SOLUTION }}
+          solution-output-file: out/${{ env.SOLUTION }}.zip
+          managed: false
+
+      - name: Export managed
+        uses: microsoft/powerplatform-actions/export-solution@v1
+        with:
+          environment-url: ${{ vars.DEV_ENV_URL }}
+          app-id: ${{ vars.PP_APP_ID }}
+          client-secret: ${{ secrets.PP_CLIENT_SECRET }}
+          tenant-id: ${{ vars.PP_TENANT_ID }}
+          solution-name: ${{ env.SOLUTION }}
+          solution-output-file: out/${{ env.SOLUTION }}_managed.zip
+          managed: true
+
+      - name: Unpack into source
+        uses: microsoft/powerplatform-actions/unpack-solution@v1
+        with:
+          solution-file: out/${{ env.SOLUTION }}.zip
+          solution-folder: ${{ env.SRC }}
+          solution-type: Both
+          overwrite-files: true
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: export/${{ env.SOLUTION }}-${{ github.run_number }}
+          base: main
+          add-paths: solutions/
+          commit-message: ${{ github.event.inputs.commit_message }}
+          title: "Export ${{ env.SOLUTION }}: ${{ github.event.inputs.commit_message }}"
+          body: Exported from Dev by workflow run ${{ github.run_number }}.
