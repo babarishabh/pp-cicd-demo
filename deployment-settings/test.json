@@ -1,0 +1,20 @@
+{
+  "EnvironmentVariables": [
+    {
+      "SchemaName": "demo_ReceiverEmail",
+      "Value": "RishabhTiwari@LearningHubSolutions.onmicrosoft.com"
+    }
+  ],
+  "ConnectionReferences": [
+    {
+      "LogicalName": "demo_sharedcommondataserviceforapps_e3202",
+      "ConnectionId": "26e836298abd4deb86d7e07e77a829cd",
+      "ConnectorId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+    },
+    {
+      "LogicalName": "demo_sharedoffice365_52b90",
+      "ConnectionId": "a9957f5e2b254ec2b062c1788c7957c1",
+      "ConnectorId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+    }
+  ]
+}
