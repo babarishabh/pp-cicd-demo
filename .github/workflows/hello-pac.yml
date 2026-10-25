@@ -1,0 +1,19 @@
+name: Hello PAC                 # name shown in the Actions tab
+on:
+  workflow_dispatch:            # runs only when you click "Run workflow"
+jobs:
+  whoami:                       # one job, named "whoami"
+    runs-on: ubuntu-latest      # GitHub starts a fresh Linux VM for it
+    steps:
+      - uses: actions/checkout@v4
+          # copies your repo onto the VM (not strictly needed here,
+          # but every real workflow starts with it)
+      - uses: microsoft/powerplatform-actions/actions-install@v1
+          # installs PAC CLI on the VM (the VM starts empty)
+      - uses: microsoft/powerplatform-actions/who-am-i@v1
+          # signs in to Dev and runs a "who am I" query
+        with:
+          environment-url: ${{ vars.DEV_ENV_URL }}       # which environment
+          app-id: ${{ vars.PP_APP_ID }}                  # which app registration
+          client-secret: ${{ secrets.PP_CLIENT_SECRET }} # its password
+          tenant-id: ${{ vars.PP_TENANT_ID }}            # which Entra tenant
